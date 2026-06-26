@@ -1,0 +1,385 @@
+esphome:
+  name: cyd-28-ha
+  friendly_name: CYD 2.8 HA
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+    advanced:
+      minimum_chip_revision: "3.1"
+      sram1_as_iram: true
+
+# --- MOTORI: PAGINE E TIMER DI RITORNO ---
+globals:
+  - id: pagina_corrente
+    type: int
+    initial_value: '0'
+  - id: timer_ritorno
+    type: int
+    initial_value: '180'
+
+interval:
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(pagina_corrente) == 1 || id(pagina_corrente) == 2;'
+          then:
+            - lambda: |-
+                id(timer_ritorno) -= 1;
+                if (id(timer_ritorno) <= 0) {
+                  id(pagina_corrente) = 0;
+                }
+
+logger:
+api:
+  encryption:
+    key: !secret api_encryption_key
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: !secret wifi_ssid_android
+    password: !secret wifi_password_android
+
+captive_portal:
+
+# --- RETE SPI PER IL CHEAP YELLOW DISPLAY (CYD 2.8) ---
+spi:
+  - id: spi_display
+    mosi_pin: GPIO13
+    miso_pin: GPIO12
+    clk_pin: GPIO14
+  - id: spi_touch
+    mosi_pin: GPIO32
+    miso_pin: GPIO39
+    clk_pin: GPIO25
+
+# --- LA TAVOLOZZA DEI COLORI ---
+color:
+  - id: colore_sfondo
+    hex: "000000" 
+  - id: colore_testo
+    hex: "FFFFFF" 
+  - id: colore_meteo
+    hex: "00BFFF" 
+  - id: colore_grigio
+    hex: "555555" 
+  - id: colore_rosso
+    hex: "FF0000" 
+  - id: colore_verde
+    hex: "00FF00" 
+  - id: colore_giallo
+    hex: "FFFF00" 
+
+# --- CARATTERI (FONT) FROM GOOGLE ---
+font:
+  - file: "gfonts://Roboto"
+    id: font_orologio
+    size: 60
+    glyphs: "0123456789:"
+  - file: "gfonts://Roboto"
+    id: font_data
+    size: 22
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ,.ì"
+  - file: "gfonts://Roboto"
+    id: font_sensori
+    size: 24
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .:°%'"
+  - file: "gfonts://Roboto"
+    id: font_piccolo
+    size: 16
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ,.ì'-+<>:"
+
+time:
+  - platform: homeassistant
+    id: orologio
+    timezone: Europe/Rome
+
+# --- SENSORI DA HOME ASSISTANT (Sostituisci con i tuoi entity_id!) ---
+sensor:
+  - platform: homeassistant
+    id: consumo_casa
+    entity_id: sensor.consumo_generale_potenza  # <-- Cambia con il tuo sensore di consumo
+  - platform: homeassistant
+    id: temperatura_esterna
+    entity_id: sensor.temperatura_esterno       # <-- Cambia con il tuo termometro esterno
+  - platform: homeassistant
+    id: umidita_esterna
+    entity_id: sensor.umidita_esterno           # <-- Cambia con il tuo sensore umidità esterno
+  - platform: wifi_signal
+    id: wifi_segnale
+    update_interval: 60s
+  - platform: internal_temperature
+    id: temperatura_esp
+  - platform: adc
+    pin: GPIO34
+    name: "Luminosita Stanza CYD"
+    id: sensore_luce
+    update_interval: 10s
+    attenuation: 12db
+
+# --- ENTITÀ BINARIE / LUCI (Sostituisci con i tuoi entity_id!) ---
+binary_sensor:
+  - platform: homeassistant
+    id: s_cucina
+    entity_id: light.luci_cucina_centrale
+  - platform: homeassistant
+    id: s_ing_par
+    entity_id: switch.ingresso_parete
+  - platform: homeassistant
+    id: s_ing_cen
+    entity_id: light.ingresso_centrale
+  - platform: homeassistant
+    id: s_bagno_par
+    entity_id: switch.anticamera_parete
+  - platform: homeassistant
+    id: s_bagno_spe
+    entity_id: switch.bagno_grande_specchiera
+  - platform: homeassistant
+    id: s_luna
+    entity_id: switch.luce_luna_esempio         # <-- Sostituito per renderlo generico
+  - platform: homeassistant
+    id: s_albero
+    entity_id: switch.luce_albero_esempio       # <-- Sostituito per renderlo generico
+  - platform: homeassistant
+    id: s_salotto
+    entity_id: light.salotto_centrale
+
+# --- CONTROLLO RETROILLUMINAZIONE SCHERMO ---
+output:
+  - platform: ledc
+    pin: GPIO21
+    id: backlight_pwm
+light:
+  - platform: monochromatic
+    output: backlight_pwm
+    name: "Luce Schermo CYD"
+    id: backlight
+    restore_mode: ALWAYS_ON
+
+# --- SCRIPT AZIONI CON FRIZIONE ANTIRIMBALZO ---
+script:
+  - id: t_cucina
+    mode: single
+    then: [ homeassistant.service: { service: light.toggle, data: { entity_id: light.luci_cucina_centrale } }, delay: 300ms ]
+  - id: d_cucina
+    mode: single
+    then: [ homeassistant.service: { service: light.turn_on, data: { entity_id: light.luci_cucina_centrale, brightness_step_pct: "-10" } }, delay: 300ms ]
+  - id: b_cucina
+    mode: single
+    then: [ homeassistant.service: { service: light.turn_on, data: { entity_id: light.luci_cucina_centrale, brightness_step_pct: "10" } }, delay: 300ms ]
+  - id: t_ing_par
+    mode: single
+    then: [ homeassistant.service: { service: switch.toggle, data: { entity_id: switch.ingresso_parete } }, delay: 300ms ]
+  - id: t_ing_cen
+    mode: single
+    then: [ homeassistant.service: { service: light.toggle, data: { entity_id: light.ingresso_centrale } }, delay: 300ms ]
+  - id: t_bagno_par
+    mode: single
+    then: [ homeassistant.service: { service: switch.toggle, data: { entity_id: switch.anticamera_parete } }, delay: 300ms ]
+  - id: t_bagno_spe
+    mode: single
+    then: [ homeassistant.service: { service: switch.toggle, data: { entity_id: switch.bagno_grande_specchiera } }, delay: 300ms ]
+  - id: t_luna
+    mode: single
+    then: [ homeassistant.service: { service: switch.toggle, data: { entity_id: switch.luce_luna_esempio } }, delay: 300ms ]
+  - id: t_albero
+    mode: single
+    then: [ homeassistant.service: { service: switch.toggle, data: { entity_id: switch.luce_albero_esempio } }, delay: 300ms ]
+  - id: t_salotto
+    mode: single
+    then: [ homeassistant.service: { service: light.toggle, data: { entity_id: light.salotto_centrale } }, delay: 300ms ]
+  - id: luce_meno
+    mode: single
+    then: [ light.dim_relative: { id: backlight, relative_brightness: "-10%" }, delay: 300ms ]
+  - id: luce_piu
+    mode: single
+    then: [ light.dim_relative: { id: backlight, relative_brightness: "10%" }, delay: 300ms ]
+
+# --- MAPPA DEL TOUCHSCREEN CALIBRATA (XPT2046) ---
+touchscreen:
+  - platform: xpt2046
+    id: mio_touch
+    spi_id: spi_touch
+    cs_pin: GPIO33
+    interrupt_pin: GPIO36
+    update_interval: 50ms
+    transform:
+      swap_xy: true
+    calibration:
+      x_min: 504
+      x_max: 3514
+      y_min: 677
+      y_max: 3666
+    on_touch:
+      - lambda: |-
+          int x = touch.x; int y = touch.y;
+          
+          // --- TOCCHI IN HOME (PAGINA 0) ---
+          if (id(pagina_corrente) == 0) { 
+            if (x < 60 && y > 180) { id(luce_meno).execute(); return; }
+            if (x > 260 && y > 180) { id(luce_piu).execute(); return; }
+            if (x > 110 && x < 210 && y > 190) { 
+              id(pagina_corrente) = 2; 
+              id(timer_ritorno) = 300; 
+              return; 
+            }
+            id(pagina_corrente) = 1; 
+            id(timer_ritorno) = 180; 
+            return; 
+          }
+          
+          // --- TOCCHI IN PLANCIA LUCI (PAGINA 1) ---
+          if (id(pagina_corrente) == 1) {
+            id(timer_ritorno) = 180;
+            if (y < 35 && x > 100 && x < 220) { id(pagina_corrente) = 0; return; }
+            
+            // Riga 1 Bottoni
+            if (x > 10 && x < 75) {
+              if (y > 45 && y < 95) id(t_cucina).execute();
+              if (y > 100 && y < 125) { if (x < 40) id(d_cucina).execute(); else if (x > 45) id(b_cucina).execute(); }
+            }
+            if (x > 85 && x < 150 && y > 45 && y < 125) id(t_ing_par).execute();
+            if (x > 160 && x < 225 && y > 45 && y < 125) id(t_ing_cen).execute();
+            if (x > 235 && x < 300 && y > 45 && y < 125) id(t_bagno_par).execute();
+            
+            // Riga 2 Bottoni
+            if (x > 10 && x < 75 && y > 140 && y < 220) id(t_bagno_spe).execute();
+            if (x > 85 && x < 150 && y > 140 && y < 220) id(t_luna).execute();
+            if (x > 160 && x < 225 && y > 140 && y < 220) id(t_albero).execute();
+            if (x > 235 && x < 300 && y > 140 && y < 220) id(t_salotto).execute();
+            return;
+          }
+
+          // --- TOCCHI IN OROLOGIO ANALOGICO (PAGINA 2) ---
+          if (id(pagina_corrente) == 2) {
+            id(pagina_corrente) = 0;
+            return;
+          }
+
+# --- IL DIRETTORE D'ORCHESTRA GRAFICO (ILI9341) ---
+display:
+  - platform: ili9xxx
+    model: ILI9341
+    id: mio_display
+    spi_id: spi_display
+    cs_pin: GPIO15
+    dc_pin: GPIO2
+    reset_pin: GPIO4
+    rotation: 90
+    invert_colors: false
+    color_palette: 8BIT
+    lambda: |-
+      it.fill(id(colore_sfondo));
+      
+      // Info fisse in cima
+      if (id(temperatura_esp).has_state()) { it.printf(5, 5, id(font_piccolo), id(colore_grigio), TextAlign::TOP_LEFT, "ESP: %.0f C", id(temperatura_esp).state); }
+      if (id(wifi_segnale).has_state()) {
+        int rssi = id(wifi_segnale).state; int tacche = 0;
+        if (rssi > -60) tacche = 4; else if (rssi > -70) tacche = 3; else if (rssi > -80) tacche = 2; else if (rssi > -90) tacche = 1;
+        int bx = 285;
+        it.filled_rectangle(bx, 15, 5, 8, tacche >= 1 ? id(colore_testo) : id(colore_grigio));
+        it.filled_rectangle(bx+7, 11, 5, 12, tacche >= 2 ? id(colore_testo) : id(colore_grigio));
+        it.filled_rectangle(bx+14, 7, 5, 16, tacche >= 3 ? id(colore_testo) : id(colore_grigio));
+        it.filled_rectangle(bx+21, 3, 5, 20, tacche >= 4 ? id(colore_testo) : id(colore_grigio));
+      }
+
+      // VISTA HOME (PAGINA 0)
+      if (id(pagina_corrente) == 0) {
+        it.filled_rectangle(15, 220, 20, 4, id(colore_grigio)); 
+        it.filled_rectangle(285, 220, 20, 4, id(colore_grigio)); 
+        it.filled_rectangle(293, 212, 4, 20, id(colore_grigio)); 
+        
+        it.filled_rectangle(110, 195, 100, 30, id(colore_grigio)); 
+        it.printf(160, 202, id(font_piccolo), id(colore_testo), TextAlign::TOP_CENTER, "Analogico");
+
+        auto time = id(orologio).now();
+        if (time.is_valid()) {
+          it.printf(65, 20, id(font_orologio), id(colore_rosso), TextAlign::TOP_CENTER, "%02d", time.hour);
+          it.print(110, 20, id(font_orologio), id(colore_testo), TextAlign::TOP_CENTER, ":");
+          it.printf(160, 20, id(font_orologio), id(colore_verde), TextAlign::TOP_CENTER, "%02d", time.minute);
+          it.print(210, 20, id(font_orologio), id(colore_testo), TextAlign::TOP_CENTER, ":");
+          it.printf(255, 20, id(font_orologio), id(colore_giallo), TextAlign::TOP_CENTER, "%02d", time.second);
+          
+          const char* giorni[] = {"Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"};
+          const char* mesi[] = {"Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"};
+          if (time.day_of_week >= 1 && time.day_of_week <= 7 && time.month >= 1 && time.month <= 12) {
+            it.printf(160, 80, id(font_data), id(colore_testo), TextAlign::TOP_CENTER, "%s, %d %s", giorni[time.day_of_week - 1], time.day_of_month, mesi[time.month - 1]);
+          }
+        }
+        
+        if (id(consumo_casa).has_state()) {
+          float watt = id(consumo_casa).state; Color col = id(colore_verde);
+          if (watt > 4000) col = id(colore_rosso); else if (watt > 2000) col = id(colore_giallo);
+          it.printf(160, 105, id(font_sensori), col, TextAlign::TOP_CENTER, "Consumo: %.0f W", watt);
+        }
+        if (id(temperatura_esterna).has_state()) it.printf(160, 130, id(font_sensori), id(colore_meteo), TextAlign::TOP_CENTER, "Esterno: %.1f °C", id(temperatura_esterna).state);
+        if (id(umidita_esterna).has_state()) it.printf(160, 155, id(font_sensori), id(colore_meteo), TextAlign::TOP_CENTER, "Umidita': %.1f %%", id(umidita_esterna).state);
+      }
+
+      // VISTA PLANCIA LUCI (PAGINA 1)
+      if (id(pagina_corrente) == 1) {
+        it.printf(160, 5, id(font_piccolo), id(colore_giallo), TextAlign::TOP_CENTER, "< Ritorno: %ds >", id(timer_ritorno));
+        
+        it.filled_rectangle(10, 45, 65, 50, id(s_cucina).state ? id(colore_giallo) : id(colore_grigio)); it.printf(42, 70, id(font_piccolo), id(colore_sfondo), TextAlign::CENTER, "Cucina");
+        it.filled_rectangle(10, 100, 30, 25, id(colore_grigio)); it.printf(25, 112, id(font_piccolo), id(colore_testo), TextAlign::CENTER, "-");
+        it.filled_rectangle(45, 100, 30, 25, id(colore_grigio)); it.printf(60, 112, id(font_piccolo), id(colore_testo), TextAlign::CENTER, "+");
+        
+        it.filled_rectangle(85, 45, 65, 80, id(s_ing_par).state ? id(colore_giallo) : id(colore_grigio)); it.printf(117, 85, id(font_piccolo), id(colore_sfondo), TextAlign::CENTER, "Ing.Muro");
+        it.filled_rectangle(160, 45, 65, 80, id(s_ing_cen).state ? id(colore_giallo) : id(colore_grigio)); it.printf(192, 85, id(font_piccolo), id(colore_sfondo), TextAlign::CENTER, "Ing.Cen.");
+        it.filled_rectangle(235, 45, 65, 80, id(s_bagno_par).state ? id(colore_giallo) : id(colore_grigio)); it.printf(267, 85, id(font_piccolo), id(colore_sfondo), TextAlign::CENTER, "Bagno.P");
+        
+        it.filled_rectangle(10, 140, 65, 80, id(s_bagno_spe).state ? id(colore_giallo) : id(colore_grigio)); it.printf(42, 180, id(font_piccolo), id(colore_sfondo), TextAlign::CENTER, "Specchio");
+        it.filled_rectangle(85, 140, 65, 80, id(s_luna).state ? id(colore_giallo) : id(colore_grigio)); it.printf(117, 180, id(font_piccolo), id(colore_sfondo), TextAlign::CENTER, "Luna");
+        it.filled_rectangle(160, 140, 65, 80, id(s_albero).state ? id(colore_giallo) : id(colore_grigio)); it.printf(192, 180, id(font_piccolo), id(colore_sfondo), TextAlign::CENTER, "Albero");
+        it.filled_rectangle(235, 140, 65, 80, id(s_salotto).state ? id(colore_giallo) : id(colore_grigio)); it.printf(267, 180, id(font_piccolo), id(colore_sfondo), TextAlign::CENTER, "Salotto");
+      }
+
+      // VISTA OROLOGIO ANALOGICO (PAGINA 2)
+      if (id(pagina_corrente) == 2) {
+        auto time = id(orologio).now();
+        if (time.is_valid()) {
+          int cx = 160; int cy = 130; int r = 105;
+          it.circle(cx, cy, r, id(colore_grigio));
+
+          for (int i = 0; i < 12; i++) {
+            if (i % 3 != 0) {
+              float angle = (i * 30 - 90) * 3.14159 / 180.0;
+              int x1 = cx + (r - 10) * cos(angle); int y1 = cy + (r - 10) * sin(angle);
+              int x2 = cx + r * cos(angle); int y2 = cy + r * sin(angle);
+              it.line(x1, y1, x2, y2, id(colore_testo));
+            }
+          }
+
+          it.printf(cx, cy - r + 12, id(font_data), id(colore_testo), TextAlign::TOP_CENTER, "12");
+          it.printf(cx + r - 12, cy, id(font_data), id(colore_testo), TextAlign::CENTER_RIGHT, "3");
+          it.printf(cx, cy + r - 12, id(font_data), id(colore_testo), TextAlign::BOTTOM_CENTER, "6");
+          it.printf(cx - r + 12, cy, id(font_data), id(colore_testo), TextAlign::CENTER_LEFT, "9");
+
+          const char* giorni[] = {"Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"};
+          const char* mesi[] = {"Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Octobre", "Novembre", "Dicembre"};
+          if (time.day_of_week >= 1 && time.day_of_week <= 7 && time.month >= 1 && time.month <= 12) {
+            it.printf(cx, cy + 40, id(font_piccolo), id(colore_meteo), TextAlign::CENTER, "%s %d %s %04d", giorni[time.day_of_week - 1], time.day_of_month, mesi[time.month - 1], time.year);
+          }
+
+          float sec_angle = (time.second * 6 - 90) * 3.14159 / 180.0;
+          float min_angle = (time.minute * 6 - 90) * 3.14159 / 180.0;
+          float hour_angle = ((time.hour % 12) * 30 + (time.minute * 0.5) - 90) * 3.14159 / 180.0;
+
+          it.line(cx, cy, cx + (r - 40) * cos(hour_angle), cy + (r - 40) * sin(hour_angle), id(colore_giallo));
+          it.line(cx, cy, cx + (r - 20) * cos(min_angle), cy + (r - 20) * sin(min_angle), id(colore_verde));
+          it.line(cx, cy, cx + (r - 5) * cos(sec_angle), cy + (r - 5) * sin(sec_angle), id(colore_rosso));
+
+          it.filled_circle(cx, cy, 4, id(colore_testo));
+          
+          if (time.hour < 12) { it.printf(10, 230, id(font_piccolo), id(colore_grigio), TextAlign::BOTTOM_LEFT, "AM"); } 
+          else { it.printf(10, 230, id(font_piccolo), id(colore_grigio), TextAlign::BOTTOM_LEFT, "PM"); }
+        }
+        it.printf(310, 230, id(font_piccolo), id(colore_grigio), TextAlign::BOTTOM_RIGHT, "%ds", id(timer_ritorno));
+      }
