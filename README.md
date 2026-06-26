@@ -2,10 +2,22 @@
 
 Benvenuti! Questa è una configurazione completa e pronta all'uso per il **Cheap Yellow Display (CYD) da 2.8 pollici** (basato su ESP32-2432S028R) integrato con **Home Assistant** tramite **ESPHome**.
 
-Il progetto include un'interfaccia a 3 pagine:
-1. **Home:** Orologio digitale (Ore, Minuti, Secondi), data, temperatura/umidità esterna e consumo elettrico della casa in tempo reale.
-2. **Plancia Luci:** Controllo per 8 interruttori/luci di casa con feedback visivo dello stato (acceso/spento) e pulsanti per il dimmer della retroilluminazione dello schermo.
-3. **Orologio Analogico:** Un quadrante analogico completo di lancette per ore, minuti e secondi con timer di ritorno automatico alla Home.
+---
+
+## 📸 Anteprima del Progetto (Screenshots)
+
+Ecco come si presenta l'interfaccia divisa sulle 3 schermate:
+
+| 🏠 1. Schermata Home | 💡 2. Plancia Luci | 🕒 3. Orologio Analogico |
+| :---: | :---: | :---: |
+| <img src="CYD 1.jpg" width="250"> | <img src="CYD 2.jpg" width="250"> | <img src="CYD 3.jpg" width="250"> |
+
+---
+
+## 🚀 Funzionalità incluse
+1. **Home:** Orologio digitale (Ore, Minuti, Secondi), data corrente, temperatura/umidità esterna e consumo elettrico della casa in tempo reale preso da Home Assistant.
+2. **Plancia Luci:** Controllo interattivo per 8 interruttori/luci di casa con feedback visivo dello stato (giallo se acceso, grigio/azzurro se spento) e pulsanti rapidi `+` e `-` negli angoli bassi della Home per il dimmer della retroilluminazione dello schermo.
+3. **Orologio Analogico:** Un quadrante analogico completo disegnato via codice matematico (linee e cerchi) con lancette dinamiche per ore, minuti e secondi, e un timer di ritorno automatico alla schermata principale per non usurare lo schermo.
 
 ---
 
